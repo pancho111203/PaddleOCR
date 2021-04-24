@@ -31,12 +31,34 @@ from ppocr.utils.logging import get_logger
 from ppocr.utils.utility import get_image_file_list, check_and_read_gif
 from ppocr.data import create_operators, transform
 from ppocr.postprocess import build_post_process
-
+from torch.utils.data import DataLoader, Dataset
 logger = get_logger()
 
 DATA_FOLDER = os.environ.get(
     'DATA_FOLDER', '/home/frubin/Projects/Kaggle/shopee-product-matching/data'
 )
+
+
+class ImagesDataset(Dataset):
+    def __init__(self, preprocess_op, images_path='train_images', dataframe_path='train.csv'):
+        super().__init__()
+        self.preprocess_op = preprocess_op
+        self.images_path = os.path.join(DATA_FOLDER, images_path)
+        self.dataframe_path = os.path.join(DATA_FOLDER, dataframe_path)
+        self.df = pd.read_csv(self.dataframe_path)
+
+    def __getitem__(self, idx):
+        image_id = self.df.iloc[idx]['image']
+        image = cv2.imread(os.path.join(self.images_path, image_id))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        data = {'image': image}
+        data = transform(data, self.preprocess_op)
+        return data[0], data[1], image_id
+
+    def __len__(self):
+        return len(self.df)
+
 
 class TextE2E(object):
     def __init__(self, args):
@@ -97,27 +119,13 @@ class TextE2E(object):
         dt_boxes = np.array(dt_boxes_new)
         return dt_boxes
 
-    def __call__(self, images):
+    def __call__(self, img, shape_list):
         start_time = time.time()
-        imgs = []
-        shape_lists = []
-        for img in images:
-            ori_im = img.copy()
-            data = {'image': img}
-            data = transform(data, self.preprocess_op)
-            imgs.append(data[0])
-            shape_lists.append(data[1])
-
-        img = np.stack(imgs)
-        shape_list = np.stack(shape_lists)
-        img = img.copy()
-
-        self.input_tensor.copy_from_cpu(img)
-
-        preprocess_time = time.time()
+        self.input_tensor.copy_from_cpu(img.numpy())
         self.predictor.run()
 
         model_infer_time = time.time()
+
         outputs = []
         for output_tensor in self.output_tensors:
             output = output_tensor.copy_to_cpu()
@@ -133,27 +141,22 @@ class TextE2E(object):
             raise NotImplementedError
         post_result = self.postprocess_op(preds, shape_list)
         postprocess_time = time.time()
-        dt_boxes_all = []
         strs_all = []
         mean_scores_all = []
         min_scores_all = []
         for res in post_result: 
-            points, strs, mean_scores, min_scores = res['points'], res['texts'], res['mean_scores'], res['min_scores']
-            dt_boxes = self.filter_tag_det_res_only_clip(points, ori_im.shape)
-
-            dt_boxes_all.append(dt_boxes)
+            strs, mean_scores, min_scores = res['texts'], res['mean_scores'], res['min_scores']
             strs_all.append(strs)
             mean_scores_all.append(mean_scores)
             min_scores_all.append(min_scores)
 
-        print(f'Preprocess time = {preprocess_time - start_time}')
-        print(f'Infer time = {model_infer_time - preprocess_time}')
+        print(f'Infer time = {model_infer_time - start_time}')
         print(f'Postprocess time = {postprocess_time - model_infer_time}')
         elapse = time.time() - start_time
-        return dt_boxes_all, strs_all, mean_scores_all, min_scores_all, elapse
+        return strs_all, mean_scores_all, min_scores_all, elapse
 
 
-def predict_shopee_ds(args, images_path='train_images', dataframe_path='train.csv', batch_size=32):
+def predict_shopee_ds(args, images_path='train_images', dataframe_path='train.csv', batch_size=16, num_workers=8):
     # Try with different values of:
         # args.gpu_mem
         # args.use_tensorrt:
@@ -163,30 +166,25 @@ def predict_shopee_ds(args, images_path='train_images', dataframe_path='train.cs
     # on file /home/frubin/Projects/Kaggle/OCR/PaddleOCR/ppocr/data/imaug/operators.py, i have hardcoded to make all images have same size
         # - instead of this, I should make a way of batching that puts images of similar size together
     # use parallelization on pre and postprocessing (dataloader??)
-    images_path = os.path.join(DATA_FOLDER, images_path)
-    dataframe_path = os.path.join(DATA_FOLDER, dataframe_path)
-    df = pd.read_csv(dataframe_path)
-
     text_detector = TextE2E(args)
     all_words, all_mean_scores, all_min_scores, all_images = [], [], [], []
+    dataset = ImagesDataset(text_detector.preprocess_op, images_path='train_images', dataframe_path='train.csv')
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
 
-    starts = np.arange(0, len(df), batch_size)
-    ends = starts + batch_size
-    total_time = 0
-    for start, end in tqdm(zip(starts, ends), total=len(starts)):
-        image_ids = df.iloc[start:end]['image']
-        images = [cv2.imread(os.path.join(images_path, image_id)) for image_id in image_ids]
-        images = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
-
-        points, strs, mean_scores, min_scores, elapse = text_detector(images)
-        total_time += elapse
+    for images, shape_lists, image_ids in tqdm(dataloader, total=len(dataloader)):
+        strs, mean_scores, min_scores, elapse = text_detector(images, shape_lists)
         for i in range(0, len(strs)):
             all_words.extend(strs[i])
             all_mean_scores.extend(mean_scores[i])
             all_min_scores.extend(min_scores[i])
-            all_images.extend([image_ids.iloc[i]]*len(strs[i]))
+            all_images.extend([image_ids[i]]*len(strs[i]))
 
-    print(total_time)
     df_res = pd.DataFrame([all_words, all_mean_scores, all_min_scores, all_images]).T
     df_res.columns = ['word', 'score_mean', 'score_min', 'image']
     return df_res

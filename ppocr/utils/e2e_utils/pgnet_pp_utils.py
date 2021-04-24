@@ -25,16 +25,33 @@ sys.path.append(os.path.join(__dir__, '..'))
 from extract_textpoint_slow import *
 from extract_textpoint_fast import generate_pivot_list_fast, restore_poly
 
+def _postprocess(p_score, p_border, p_direction, p_char, shape, Lexicon_Table, score_thresh):
+    src_h, src_w, ratio_h, ratio_w = shape
+    instance_yxs_list, seq_strs, word_mean_scores, word_min_scores = generate_pivot_list_fast(
+        p_score,
+        p_char,
+        p_direction,
+        Lexicon_Table,
+        score_thresh=score_thresh)
+
+    data = {
+        'texts': [seq for seq in seq_strs if len(seq) >= 2],
+        'mean_scores': word_mean_scores,
+        'min_scores': word_min_scores
+    }
+    return data
+
 
 class PGNet_PostProcess(object):
     # two different post-process
     def __init__(self, character_dict_path, valid_set, score_thresh, outs_dict,
-                 shape_list):
+                 shape_list, pool):
         self.Lexicon_Table = get_dict(character_dict_path)
         self.valid_set = valid_set
         self.score_thresh = score_thresh
         self.outs_dict = outs_dict
         self.shape_list = shape_list
+        self.pool = pool
 
     def pg_postprocess_fast(self):
         p_score_all = self.outs_dict['f_score']
@@ -44,35 +61,17 @@ class PGNet_PostProcess(object):
 
         batch_size = p_score_all.shape[0]
         datas = []
+        # datas = self.pool.map(sum_up_to, range(10))
         for i in range(0, batch_size):
-            if isinstance(p_score_all, paddle.Tensor):
-                p_score = p_score_all[i].numpy()
-                p_border = p_border_all[i].numpy()
-                p_direction = p_direction_all[i].numpy()
-                p_char = p_char_all[i].numpy()
-            else:
-                p_score = p_score_all[i]
-                p_border = p_border_all[i]
-                p_direction = p_direction_all[i]
-                p_char = p_char_all[i]
+            p_score = p_score_all[i]
+            p_border = p_border_all[i]
+            p_direction = p_direction_all[i]
+            p_char = p_char_all[i]
+            shape = self.shape_list[i]
 
-            src_h, src_w, ratio_h, ratio_w = self.shape_list[i]
-            instance_yxs_list, seq_strs, word_mean_scores, word_min_scores = generate_pivot_list_fast(
-                p_score,
-                p_char,
-                p_direction,
-                self.Lexicon_Table,
-                score_thresh=self.score_thresh)
-
-            poly_list, keep_str_list = restore_poly(instance_yxs_list, seq_strs,
-                                                    p_border, ratio_w, ratio_h,
-                                                    src_w, src_h, self.valid_set)
-            data = {
-                'points': poly_list,
-                'texts': keep_str_list,
-                'mean_scores': word_mean_scores,
-                'min_scores': word_min_scores
-            }
+            data = _postprocess(
+                p_score, p_border, p_direction, p_char, shape, self.Lexicon_Table, self.score_thresh
+            )
             datas.append(data)
 
         return datas
