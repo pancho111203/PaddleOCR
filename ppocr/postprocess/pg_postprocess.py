@@ -23,7 +23,6 @@ __dir__ = os.path.dirname(__file__)
 sys.path.append(__dir__)
 sys.path.append(os.path.join(__dir__, '..'))
 from ppocr.utils.e2e_utils.pgnet_pp_utils import PGNet_PostProcess
-import multiprocessing
 
 
 class PGPostProcess(object):
@@ -37,7 +36,6 @@ class PGPostProcess(object):
         self.valid_set = valid_set
         self.score_thresh = score_thresh
         self.mode = mode
-        self.pool = multiprocessing.Pool()
 
 
         # c++ la-nms is faster, but only support python 3.5
@@ -47,7 +45,7 @@ class PGPostProcess(object):
 
     def __call__(self, outs_dict, shape_list):
         post = PGNet_PostProcess(self.character_dict_path, self.valid_set,
-                                 self.score_thresh, outs_dict, shape_list, self.pool)
+                                 self.score_thresh, outs_dict, shape_list)
         if self.mode == 'fast':
             data = post.pg_postprocess_fast()
         else:

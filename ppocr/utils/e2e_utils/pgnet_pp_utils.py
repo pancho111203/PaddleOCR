@@ -45,13 +45,12 @@ def _postprocess(p_score, p_border, p_direction, p_char, shape, Lexicon_Table, s
 class PGNet_PostProcess(object):
     # two different post-process
     def __init__(self, character_dict_path, valid_set, score_thresh, outs_dict,
-                 shape_list, pool):
+                 shape_list):
         self.Lexicon_Table = get_dict(character_dict_path)
         self.valid_set = valid_set
         self.score_thresh = score_thresh
         self.outs_dict = outs_dict
         self.shape_list = shape_list
-        self.pool = pool
 
     def pg_postprocess_fast(self):
         p_score_all = self.outs_dict['f_score']
@@ -61,7 +60,6 @@ class PGNet_PostProcess(object):
 
         batch_size = p_score_all.shape[0]
         datas = []
-        # datas = self.pool.map(sum_up_to, range(10))
         for i in range(0, batch_size):
             p_score = p_score_all[i]
             p_border = p_border_all[i]
