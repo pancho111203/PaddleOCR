@@ -243,19 +243,21 @@ class E2EResizeForTest(object):
         return data
 
     def resize_image_for_totaltext(self, im, max_side_len=512):
-
+         # TODO MADE FOR SHOPEE, SO THAT ALL IMAGES HAVE SAME SIZE
         h, w, _ = im.shape
-        resize_w = w
-        resize_h = h
-        ratio = 1.25
-        if h * ratio > max_side_len:
-            ratio = float(max_side_len) / resize_h
-        resize_h = int(resize_h * ratio)
-        resize_w = int(resize_w * ratio)
+        # resize_w = w
+        # resize_h = h
+        # ratio = 1.25
+        # if h * ratio > max_side_len:
+        #     ratio = float(max_side_len) / resize_h
+        # resize_h = int(resize_h * ratio)
+        # resize_w = int(resize_w * ratio)
 
-        max_stride = 128
-        resize_h = (resize_h + max_stride - 1) // max_stride * max_stride
-        resize_w = (resize_w + max_stride - 1) // max_stride * max_stride
+        # max_stride = 128
+        # resize_h = (resize_h + max_stride - 1) // max_stride * max_stride
+        # resize_w = (resize_w + max_stride - 1) // max_stride * max_stride
+        resize_h = 768
+        resize_w = 768
         im = cv2.resize(im, (int(resize_w), int(resize_h)))
         ratio_h = resize_h / float(h)
         ratio_w = resize_w / float(w)
@@ -269,7 +271,6 @@ class E2EResizeForTest(object):
         :return: the resized image and the resize ratio
         """
         h, w, _ = im.shape
-
         resize_w = w
         resize_h = h
 

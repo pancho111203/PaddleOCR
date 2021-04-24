@@ -25,7 +25,7 @@ import numpy as np
 import time
 import sys
 from tqdm.auto import tqdm
-
+import fire
 import tools.infer.utility as utility
 from ppocr.utils.logging import get_logger
 from ppocr.utils.utility import get_image_file_list, check_and_read_gif
@@ -34,6 +34,9 @@ from ppocr.postprocess import build_post_process
 
 logger = get_logger()
 
+DATA_FOLDER = os.environ.get(
+    'DATA_FOLDER', '/home/frubin/Projects/Kaggle/shopee-product-matching/data'
+)
 
 class TextE2E(object):
     def __init__(self, args):
@@ -94,21 +97,27 @@ class TextE2E(object):
         dt_boxes = np.array(dt_boxes_new)
         return dt_boxes
 
-    def __call__(self, img):
+    def __call__(self, images):
+        start_time = time.time()
+        imgs = []
+        shape_lists = []
+        for img in images:
+            ori_im = img.copy()
+            data = {'image': img}
+            data = transform(data, self.preprocess_op)
+            imgs.append(data[0])
+            shape_lists.append(data[1])
 
-        ori_im = img.copy()
-        data = {'image': img}
-        data = transform(data, self.preprocess_op)
-        img, shape_list = data
-        if img is None:
-            return None, 0
-        img = np.expand_dims(img, axis=0)
-        shape_list = np.expand_dims(shape_list, axis=0)
+        img = np.stack(imgs)
+        shape_list = np.stack(shape_lists)
         img = img.copy()
-        starttime = time.time()
 
         self.input_tensor.copy_from_cpu(img)
+
+        preprocess_time = time.time()
         self.predictor.run()
+
+        model_infer_time = time.time()
         outputs = []
         for output_tensor in self.output_tensors:
             output = output_tensor.copy_to_cpu()
@@ -123,57 +132,66 @@ class TextE2E(object):
         else:
             raise NotImplementedError
         post_result = self.postprocess_op(preds, shape_list)
-        points, strs, mean_scores, min_scores = post_result['points'], post_result['texts'], post_result['mean_scores'], post_result['min_scores']
-        dt_boxes = self.filter_tag_det_res_only_clip(points, ori_im.shape)
-        elapse = time.time() - starttime
-        return dt_boxes, strs, mean_scores, min_scores, elapse
+        postprocess_time = time.time()
+        dt_boxes_all = []
+        strs_all = []
+        mean_scores_all = []
+        min_scores_all = []
+        for res in post_result: 
+            points, strs, mean_scores, min_scores = res['points'], res['texts'], res['mean_scores'], res['min_scores']
+            dt_boxes = self.filter_tag_det_res_only_clip(points, ori_im.shape)
+
+            dt_boxes_all.append(dt_boxes)
+            strs_all.append(strs)
+            mean_scores_all.append(mean_scores)
+            min_scores_all.append(min_scores)
+
+        print(f'Preprocess time = {preprocess_time - start_time}')
+        print(f'Infer time = {model_infer_time - preprocess_time}')
+        print(f'Postprocess time = {postprocess_time - model_infer_time}')
+        elapse = time.time() - start_time
+        return dt_boxes_all, strs_all, mean_scores_all, min_scores_all, elapse
+
+
+def predict_shopee_ds(args, images_path='train_images', dataframe_path='train.csv', batch_size=32):
+    # Try with different values of:
+        # args.gpu_mem
+        # args.use_tensorrt:
+        # args.use_fp16
+        # args.max_batch_size
+    # Try increasing or decreasing img size (currently 768x768)
+    # on file /home/frubin/Projects/Kaggle/OCR/PaddleOCR/ppocr/data/imaug/operators.py, i have hardcoded to make all images have same size
+        # - instead of this, I should make a way of batching that puts images of similar size together
+    # use parallelization on pre and postprocessing (dataloader??)
+    images_path = os.path.join(DATA_FOLDER, images_path)
+    dataframe_path = os.path.join(DATA_FOLDER, dataframe_path)
+    df = pd.read_csv(dataframe_path)
+
+    text_detector = TextE2E(args)
+    all_words, all_mean_scores, all_min_scores, all_images = [], [], [], []
+
+    starts = np.arange(0, len(df), batch_size)
+    ends = starts + batch_size
+    total_time = 0
+    for start, end in tqdm(zip(starts, ends), total=len(starts)):
+        image_ids = df.iloc[start:end]['image']
+        images = [cv2.imread(os.path.join(images_path, image_id)) for image_id in image_ids]
+        images = [cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images]
+
+        points, strs, mean_scores, min_scores, elapse = text_detector(images)
+        total_time += elapse
+        for i in range(0, len(strs)):
+            all_words.extend(strs[i])
+            all_mean_scores.extend(mean_scores[i])
+            all_min_scores.extend(min_scores[i])
+            all_images.extend([image_ids.iloc[i]]*len(strs[i]))
+
+    print(total_time)
+    df_res = pd.DataFrame([all_words, all_mean_scores, all_min_scores, all_images]).T
+    df_res.columns = ['word', 'score_mean', 'score_min', 'image']
+    return df_res
 
 
 if __name__ == "__main__":
     args = utility.parse_args()
-    image_file_list = get_image_file_list(args.image_dir)
-    text_detector = TextE2E(args)
-    count = 0
-    total_time = 0
-    draw_img_save = "./inference_results"
-    if not os.path.exists(draw_img_save):
-        os.makedirs(draw_img_save)
-    all_mean_scores = []
-    all_min_scores = []
-    all_images = []
-    all_words = []
-    for image_file in tqdm(image_file_list, total=len(image_file_list)):
-        img, flag = check_and_read_gif(image_file)
-        if not flag:
-            img = cv2.imread(image_file)
-        if img is None:
-            logger.info("error in loading image:{}".format(image_file))
-            continue
-        points, strs, mean_scores, min_scores, elapse = text_detector(img)
-        if count > 0:
-            total_time += elapse
-        count += 1
-
-        img_name_pure = os.path.split(image_file)[-1]
-        if args.save_image:
-            src_im = utility.draw_e2e_res(points, strs, image_file)
-            img_path = os.path.join(draw_img_save,
-                                    "e2e_res.jpg")
-            if os.path.exists(img_path):
-                os.remove(img_path)
-            cv2.imwrite(img_path, src_im)
-            logger.info("The visualized image saved in {}".format(img_path))
-            logger.info(list(zip(strs, mean_scores)))
-            logger.info(list(zip(strs, min_scores)))
-
-        all_words.extend(strs)
-        all_mean_scores.extend(mean_scores)
-        all_min_scores.extend(min_scores)
-        all_images.extend([img_name_pure]*len(mean_scores))
-
-    df = pd.DataFrame([all_words, all_mean_scores, all_min_scores, all_images]).T
-    df.columns = ['word', 'score_mean', 'score_min', 'image']
-    df.to_csv('results.csv')
-
-    if count > 1:
-        logger.info("Avg Time: {}".format(total_time / (count - 1)))
+    predict_shopee_ds(args)
