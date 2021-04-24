@@ -53,18 +53,21 @@ class PGNet_PostProcess(object):
             p_char = p_char[0]
 
         src_h, src_w, ratio_h, ratio_w = self.shape_list[0]
-        instance_yxs_list, seq_strs = generate_pivot_list_fast(
+        instance_yxs_list, seq_strs, word_mean_scores, word_min_scores = generate_pivot_list_fast(
             p_score,
             p_char,
             p_direction,
             self.Lexicon_Table,
             score_thresh=self.score_thresh)
+
         poly_list, keep_str_list = restore_poly(instance_yxs_list, seq_strs,
                                                 p_border, ratio_w, ratio_h,
                                                 src_w, src_h, self.valid_set)
         data = {
             'points': poly_list,
             'texts': keep_str_list,
+            'mean_scores': word_mean_scores,
+            'min_scores': word_min_scores
         }
         return data
 

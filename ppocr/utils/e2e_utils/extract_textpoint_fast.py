@@ -87,18 +87,46 @@ def ctc_greedy_decoder(probs_seq, blank=95, keep_blank_in_idxs=True):
     dst_str = remove_blank(dedup_str, blank=blank)
     return dst_str, keep_idx_list
 
+from scipy.special import softmax
 
 def instance_ctc_greedy_decoder(gather_info, logits_map, pts_num=4):
     _, _, C = logits_map.shape
     ys, xs = zip(*gather_info)
     logits_seq = logits_map[list(ys), list(xs)]
     probs_seq = logits_seq
+    probs_seq_logit = softmax(probs_seq, axis=1)
+
     labels = np.argmax(probs_seq, axis=1)
-    dst_str = [k for k, v_ in groupby(labels) if k != C - 1]
+    scores = np.max(probs_seq_logit, axis=1)
+
+    prev_label = labels[0]
+    dst_str = []
+    final_scores = []
+    current_max_score = 0
+    for i, label in enumerate(labels):
+        if label != prev_label:
+            if prev_label != C - 1:
+                final_scores.append(current_max_score)
+                dst_str.append(prev_label)
+
+            current_max_score = 0
+            prev_label = label
+        
+
+        c_score = scores[i]
+        current_max_score = max(current_max_score, c_score)
+
+    if len(final_scores) > 0:
+        mean_score = np.mean(final_scores)
+        min_score = np.min(final_scores)
+    else:
+        mean_score = 0
+        min_score = 0
+
     detal = len(gather_info) // (pts_num - 1)
     keep_idx_list = [0] + [detal * (i + 1) for i in range(pts_num - 2)] + [-1]
     keep_gather_list = [gather_info[idx] for idx in keep_idx_list]
-    return dst_str, keep_gather_list
+    return dst_str, keep_gather_list, labels, mean_score, min_score
 
 
 def ctc_decoder_for_image(gather_info_list,
@@ -110,17 +138,22 @@ def ctc_decoder_for_image(gather_info_list,
     """
     decoder_str = []
     decoder_xys = []
+    all_mean_scores = []
+    all_min_scores = []
     for gather_info in gather_info_list:
         if len(gather_info) < pts_num:
             continue
-        dst_str, xys_list = instance_ctc_greedy_decoder(
+        dst_str, xys_list, labels, mean_score, min_score = instance_ctc_greedy_decoder(
             gather_info, logits_map, pts_num=pts_num)
         dst_str_readable = ''.join([Lexicon_Table[idx] for idx in dst_str])
         if len(dst_str_readable) < 2:
             continue
         decoder_str.append(dst_str_readable)
         decoder_xys.append(xys_list)
-    return decoder_str, decoder_xys
+        all_mean_scores.append(mean_score)
+        all_min_scores.append(min_score)
+    
+    return decoder_str, decoder_xys, all_mean_scores, all_min_scores
 
 
 def sort_with_direction(pos_list, f_direction):
@@ -363,6 +396,7 @@ def generate_pivot_list_fast(p_score,
     p_score = p_score[0]
     f_direction = f_direction.transpose(1, 2, 0)
     p_tcl_map = (p_score > score_thresh) * 1.0
+
     skeleton_map = thin(p_tcl_map.astype(np.uint8))
     instance_count, instance_label_map = cv2.connectedComponents(
         skeleton_map.astype(np.uint8), connectivity=8)
@@ -383,9 +417,9 @@ def generate_pivot_list_fast(p_score,
             all_pos_yxs.append(pos_list_sorted)
 
     p_char_maps = p_char_maps.transpose([1, 2, 0])
-    decoded_str, keep_yxs_list = ctc_decoder_for_image(
+    decoded_str, keep_yxs_list, word_mean_scores, word_min_scores = ctc_decoder_for_image(
         all_pos_yxs, logits_map=p_char_maps, Lexicon_Table=Lexicon_Table)
-    return keep_yxs_list, decoded_str
+    return keep_yxs_list, decoded_str, word_mean_scores, word_min_scores
 
 
 def extract_main_direction(pos_list, f_direction):
