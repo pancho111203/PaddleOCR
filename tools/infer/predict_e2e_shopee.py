@@ -85,7 +85,9 @@ class TextE2E(object):
             pre_process_list[0] = {
                 'E2EResizeForTest': {
                     'max_side_len': args.e2e_limit_side_len,
-                    'valid_set': 'totaltext'
+                    'valid_set': 'totaltext',
+                    'width': args.img_size,
+                    'height': args.img_size
                 }
             }
             postprocess_params['name'] = 'PGPostProcess'
@@ -156,9 +158,18 @@ class TextE2E(object):
         return strs_all, mean_scores_all, min_scores_all, elapse
 
 
-def predict_shopee_ds(model_dir, images_path='train_images', dataframe_path='train.csv', batch_size=16, num_workers=8):
+def predict_shopee_ds(
+    model_dir='./inference/e2e_server_pgnetA_infer',
+    images_path='train_images',
+    dataframe_path='train.csv',
+    batch_size=16,
+    num_workers=8,
+    img_size=768
+):
+    assert img_size % 192 == 0
     args = utility.parse_args(default=True)
     args.e2e_model_dir = model_dir
+    args.img_size = img_size
 
     # Try with different values of:
         # args.gpu_mem
@@ -171,7 +182,7 @@ def predict_shopee_ds(model_dir, images_path='train_images', dataframe_path='tra
     # use parallelization on pre and postprocessing (dataloader??)
     text_detector = TextE2E(args)
     all_words, all_mean_scores, all_min_scores, all_images = [], [], [], []
-    dataset = ImagesDataset(text_detector.preprocess_op, images_path='train_images', dataframe_path='train.csv')
+    dataset = ImagesDataset(text_detector.preprocess_op, images_path=images_path, dataframe_path=dataframe_path)
     dataloader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -194,4 +205,4 @@ def predict_shopee_ds(model_dir, images_path='train_images', dataframe_path='tra
 
 
 if __name__ == "__main__":
-    predict_shopee_ds('./inference/e2e_server_pgnetA_infer')
+    fire.Fire()

@@ -226,68 +226,30 @@ class DetResizeForTest(object):
 class E2EResizeForTest(object):
     def __init__(self, **kwargs):
         super(E2EResizeForTest, self).__init__()
-        self.max_side_len = kwargs['max_side_len']
+        self.width = kwargs['width']
+        self.height = kwargs['height']
         self.valid_set = kwargs['valid_set']
 
     def __call__(self, data):
         img = data['image']
+
         src_h, src_w, _ = img.shape
-        if self.valid_set == 'totaltext':
-            im_resized, [ratio_h, ratio_w] = self.resize_image_for_totaltext(
-                img, max_side_len=self.max_side_len)
-        else:
-            im_resized, (ratio_h, ratio_w) = self.resize_image(
-                img, max_side_len=self.max_side_len)
+        im_resized, [ratio_h, ratio_w] = self.resize_image_for_totaltext(
+            img,
+            self.width,
+            self.height
+        )
+
         data['image'] = im_resized
         data['shape'] = np.array([src_h, src_w, ratio_h, ratio_w])
         return data
 
-    def resize_image_for_totaltext(self, im, max_side_len=512):
-         # TODO MADE FOR SHOPEE, SO THAT ALL IMAGES HAVE SAME SIZE
+    def resize_image_for_totaltext(self, im, width=768, height=768):
         h, w, _ = im.shape
-        # resize_w = w
-        # resize_h = h
-        # ratio = 1.25
-        # if h * ratio > max_side_len:
-        #     ratio = float(max_side_len) / resize_h
-        # resize_h = int(resize_h * ratio)
-        # resize_w = int(resize_w * ratio)
 
-        # max_stride = 128
-        # resize_h = (resize_h + max_stride - 1) // max_stride * max_stride
-        # resize_w = (resize_w + max_stride - 1) // max_stride * max_stride
-        resize_h = 768
-        resize_w = 768
+        resize_h = height
+        resize_w = width
         im = cv2.resize(im, (int(resize_w), int(resize_h)))
         ratio_h = resize_h / float(h)
         ratio_w = resize_w / float(w)
-        return im, (ratio_h, ratio_w)
-
-    def resize_image(self, im, max_side_len=512):
-        """
-        resize image to a size multiple of max_stride which is required by the network
-        :param im: the resized image
-        :param max_side_len: limit of max image size to avoid out of memory in gpu
-        :return: the resized image and the resize ratio
-        """
-        h, w, _ = im.shape
-        resize_w = w
-        resize_h = h
-
-        # Fix the longer side
-        if resize_h > resize_w:
-            ratio = float(max_side_len) / resize_h
-        else:
-            ratio = float(max_side_len) / resize_w
-
-        resize_h = int(resize_h * ratio)
-        resize_w = int(resize_w * ratio)
-
-        max_stride = 128
-        resize_h = (resize_h + max_stride - 1) // max_stride * max_stride
-        resize_w = (resize_w + max_stride - 1) // max_stride * max_stride
-        im = cv2.resize(im, (int(resize_w), int(resize_h)))
-        ratio_h = resize_h / float(h)
-        ratio_w = resize_w / float(w)
-
         return im, (ratio_h, ratio_w)
