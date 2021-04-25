@@ -23,7 +23,7 @@ import math
 from paddle import inference
 
 
-def parse_args():
+def parse_args(default=False):
     def str2bool(v):
         return v.lower() in ("true", "t", "1")
 
@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument("--gpu_mem", type=int, default=10000)
 
     # params for text detector
-    parser.add_argument("--image_dir", type=str)
+    parser.add_argument("--image_dir", type=str, default='')
     parser.add_argument("--det_algorithm", type=str, default='DB')
     parser.add_argument("--det_model_dir", type=str)
     parser.add_argument("--det_limit_side_len", type=float, default=960)
@@ -77,7 +77,7 @@ def parse_args():
 
     # params for e2e
     parser.add_argument("--e2e_algorithm", type=str, default='PGNet')
-    parser.add_argument("--e2e_model_dir", type=str)
+    parser.add_argument("--e2e_model_dir", type=str, default='')
     parser.add_argument("--e2e_limit_side_len", type=float, default=768)
     parser.add_argument("--e2e_limit_type", type=str, default='max')
 
@@ -104,10 +104,10 @@ def parse_args():
     parser.add_argument("--total_process_num", type=int, default=1)
     parser.add_argument("--process_id", type=int, default=0)
 
-    try:
-        return parser.parse_args()
-    except:
+    if default:
         return parser.parse_args('')
+
+    return parser.parse_args()
 
 
 def create_predictor(args, mode, logger):

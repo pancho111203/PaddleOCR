@@ -156,8 +156,9 @@ class TextE2E(object):
         return strs_all, mean_scores_all, min_scores_all, elapse
 
 
-def predict_shopee_ds(images_path='train_images', dataframe_path='train.csv', batch_size=16, num_workers=8):
-    args = utility.parse_args()
+def predict_shopee_ds(model_dir, images_path='train_images', dataframe_path='train.csv', batch_size=16, num_workers=8):
+    args = utility.parse_args(default=True)
+    args.e2e_model_dir = model_dir
 
     # Try with different values of:
         # args.gpu_mem
@@ -193,4 +194,4 @@ def predict_shopee_ds(images_path='train_images', dataframe_path='train.csv', ba
 
 
 if __name__ == "__main__":
-    predict_shopee_ds()
+    predict_shopee_ds('./inference/e2e_server_pgnetA_infer')
