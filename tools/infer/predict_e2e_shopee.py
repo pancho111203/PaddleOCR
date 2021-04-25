@@ -150,13 +150,15 @@ class TextE2E(object):
             mean_scores_all.append(mean_scores)
             min_scores_all.append(min_scores)
 
-        print(f'Infer time = {model_infer_time - start_time}')
-        print(f'Postprocess time = {postprocess_time - model_infer_time}')
+        logger.debug(f'Infer time = {model_infer_time - start_time}')
+        logger.debug(f'Postprocess time = {postprocess_time - model_infer_time}')
         elapse = time.time() - start_time
         return strs_all, mean_scores_all, min_scores_all, elapse
 
 
-def predict_shopee_ds(args, images_path='train_images', dataframe_path='train.csv', batch_size=16, num_workers=8):
+def predict_shopee_ds(images_path='train_images', dataframe_path='train.csv', batch_size=16, num_workers=8):
+    args = utility.parse_args()
+
     # Try with different values of:
         # args.gpu_mem
         # args.use_tensorrt:
@@ -191,5 +193,4 @@ def predict_shopee_ds(args, images_path='train_images', dataframe_path='train.cs
 
 
 if __name__ == "__main__":
-    args = utility.parse_args()
-    predict_shopee_ds(args)
+    predict_shopee_ds()

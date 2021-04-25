@@ -21,15 +21,14 @@ import copy
 
 __all__ = ['build_post_process']
 
+from ppocr.postprocess.db_postprocess import DBPostProcess
+from ppocr.postprocess.east_postprocess import EASTPostProcess
+from ppocr.postprocess.sast_postprocess import SASTPostProcess
+from ppocr.postprocess.rec_postprocess import CTCLabelDecode, AttnLabelDecode, SRNLabelDecode
+from ppocr.postprocess.cls_postprocess import ClsPostProcess
+from ppocr.postprocess.pg_postprocess import PGPostProcess
 
 def build_post_process(config, global_config=None):
-    from .db_postprocess import DBPostProcess
-    from .east_postprocess import EASTPostProcess
-    from .sast_postprocess import SASTPostProcess
-    from .rec_postprocess import CTCLabelDecode, AttnLabelDecode, SRNLabelDecode
-    from .cls_postprocess import ClsPostProcess
-    from .pg_postprocess import PGPostProcess
-
     support_dict = [
         'DBPostProcess', 'EASTPostProcess', 'SASTPostProcess', 'CTCLabelDecode',
         'AttnLabelDecode', 'ClsPostProcess', 'SRNLabelDecode', 'PGPostProcess'

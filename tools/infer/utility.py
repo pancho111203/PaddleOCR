@@ -104,7 +104,10 @@ def parse_args():
     parser.add_argument("--total_process_num", type=int, default=1)
     parser.add_argument("--process_id", type=int, default=0)
 
-    return parser.parse_args()
+    try:
+        return parser.parse_args()
+    except:
+        return parser.parse_args('')
 
 
 def create_predictor(args, mode, logger):
